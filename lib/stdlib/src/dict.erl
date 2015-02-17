@@ -37,7 +37,7 @@
 
 %% Standard interface.
 -export([new/0,is_key/2,to_list/1,from_list/1,size/1,is_empty/1]).
--export([fetch/2,find/2,fetch_keys/1,erase/2]).
+-export([fetch/2,find/2,fetch_keys/1,erase/2,eject/2]).
 -export([store/3,append/3,append_list/3,update/3,update/4,update_counter/3]).
 -export([fold/3,map/2,filter/2,merge/3]).
 
@@ -153,6 +153,24 @@ find_val(_, []) -> error.
 fetch_keys(D) ->
     fold(fun (Key, _Val, Keys) -> [Key|Keys] end, [], D).
 
+
+
+-spec eject(Key, Dict1) -> {Value, Dict2} when
+      Dict1 :: dict(Key, Value),
+      Dict2 :: dict(Key, Value).
+
+%%  Erase an element with key Key and return the value
+
+eject(Key, D0) ->
+    Slot = get_slot(D0, Key),
+%    {D1,{Dc,Val}} =
+    case on_bucket(fun (B0) -> erase_key(Key, B0) end,
+                   D0, Slot) of
+        {_,{0, nil}} -> erlang:error(badarg, [Key, D0]);
+        {D1,{Dc,Val}} -> {Val, maybe_contract(D1, Dc)}
+    end.
+
+
 -spec erase(Key, Dict1) -> Dict2 when
       Dict1 :: dict(Key, Value),
       Dict2 :: dict(Key, Value).
@@ -161,15 +179,15 @@ fetch_keys(D) ->
 
 erase(Key, D0) -> 
     Slot = get_slot(D0, Key),
-    {D1,Dc} = on_bucket(fun (B0) -> erase_key(Key, B0) end,
+    {D1,Dc} = on_bucket(fun (B0) -> {Bkt,{Dc,_Val}} = erase_key(Key, B0), {Bkt,Dc} end,
 			D0, Slot),
     maybe_contract(D1, Dc).
 
-erase_key(Key, [?kv(Key,_Val)|Bkt]) -> {Bkt,1};
+erase_key(Key, [?kv(Key,Val)|Bkt]) -> {Bkt,{1,Val}};
 erase_key(Key, [E|Bkt0]) ->
     {Bkt1,Dc} = erase_key(Key, Bkt0),
     {[E|Bkt1],Dc};
-erase_key(_, []) -> {[],0}.
+erase_key(_, []) -> {[],{0, nil}}.
 
 -spec store(Key, Value, Dict1) -> Dict2 when
       Dict1 :: dict(Key, Value),
